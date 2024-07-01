@@ -2,9 +2,14 @@ import os
 import streamlit as st
 from langchain_groq import ChatGroq
 from langchain_community.document_loaders import WebBaseLoader
+from langchain_community.document_loaders import PyPDFLoader
+# from pypdf import PdfReader
+import pypdf
+from PyPDF2 import PdfReader
 from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.text_splitter import CharacterTextSplitter
 from streamlit_extras.add_vertical_space import add_vertical_space
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -15,72 +20,170 @@ from langchain_core.documents import Document
 from typing_extensions import TypedDict
 from langgraph.graph import END, StateGraph
 
+os.environ["TAVILY_API_KEY"] = "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"
+os.environ["GROQ_API_KEY"] = "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"
+
+
+def uploaded_data(uploaded_file, title=None):
+    if uploaded_file is not None:
+        docs = []
+        fname = uploaded_file.name
+        if not title:
+            title = os.path.basename(fname)
+        if fname.lower().endswith('pdf'):
+            pdf_reader = PdfReader(uploaded_file)
+            # loader = PyPDFLoader(uploaded_file)
+            # docs.extend(loader.load())
+            for num, page in enumerate(pdf_reader.pages):
+                page = page.extract_text()
+                doc = Document(page_content=page, metadata={'title': title, 'page': (num + 1)})
+                docs.append(doc)
+
+        else:
+            # assume text
+            doc_text = uploaded_file.read().decode()
+            docs.append(doc_text)
+
+        return docs
+    else:
+        return None
+
+def load_web_page(urls):
+    if len(urls) > 0:
+        docs = [WebBaseLoader(url).load() for url in urls]
+        print("docs",docs)
+        url_docs_list = [item for sublist in docs for item in sublist]
+        return url_docs_list
+    else: 
+        return None
+
+st.set_page_config(page_title="Adaptive RAG ChatBot", page_icon=":robot:", layout="wide")
+
 curr_state = []
+urls = []
+docs_list = []
 ################################FRONT-END####################################
 
+st.title("Adaptive RAG ChatBot")
+
+st.subheader("Ask questions about your documents and get answers from the RAG model.")
+
 #subheader
-st.subheader('LLM Question-Answering Application')
+# st.subheader('LLM Question-Answering Application')
 
 #sidebar creator
 with st.sidebar:
 
     #uploads file
     uploaded_file = st.file_uploader('Upload a file:', type=['pdf', 'docx', 'txt'])
-    
-    #add file button
-    add_data = st.button('Add File')
 
     #Add URL
     url_input = st.text_input("Add a URL")
-
+    if len(url_input)>0:
+        urls.append(url_input)
     #add URL button
     if st.button("Add URL"):
 
-
+        # urls.append(url_input)
+        # print('urls',urls)
         st.write(f"Added URL: {url_input}")
 
     #number input widget
     chunk_size = st.number_input('Chunk size:', min_value=100, max_value=2048, value=512) #, on_change=clear_history
 
     #variable k input
-    k = st.number_input('k', min_value=1, max_value=20, value=3) #, on_change=clear_history
+    k = st.number_input('k', min_value=1, max_value=20, value=5) #, on_change=clear_history
+
+    #add file button
+    add_data = st.button('Add Data')
 
     add_vertical_space(5)
     st.write('Made with ❤️ by Mohamed Farrag')
 
 
-os.environ["TAVILY_API_KEY"] = "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"
-os.environ["GROQ_API_KEY"] = "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"
+    if add_data: # if the user browsed a file 
 
-urls = [
-    "https://lilianweng.github.io/posts/2023-06-23-agent/",
-    "https://lilianweng.github.io/posts/2023-03-15-prompt-engineering/",
-    "https://lilianweng.github.io/posts/2023-10-25-adv-attack-llm/",
-]
+        with st.spinner ('Reading, chunking and embedding ...'):
+            
 
-docs = [WebBaseLoader(url).load() for url in urls]
-docs_list = [item for sublist in docs for item in sublist]
+            # if len(urls) > 0:
+            #     url_docs_list = load_web_page(urls)
+                
+            # if uploaded_file is not None:
+            #     docs = uploaded_data(uploaded_file)
+            print("urls2",urls)
+            url_docs_list = load_web_page(urls)
+            docs = uploaded_data(uploaded_file)
 
-text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-    chunk_size=250, chunk_overlap=0
-)
-doc_splits = text_splitter.split_documents(docs_list)
+            
+            if url_docs_list is not None and docs is not None:
+                docs_list = docs + url_docs_list
+            elif url_docs_list is not None and docs is None:
+                docs_list = url_docs_list
+            elif url_docs_list is None and docs is not None:
+                docs_list = docs
+            else:
+                docs_list = []
+
+            print('docs_list',docs_list)
+            text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+                chunk_size=chunk_size, chunk_overlap=0
+            )
+            doc_splits = text_splitter.split_documents(docs_list)
+            print('doc_splits',doc_splits)
+
+            # text_splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
+            # chunked_documents = text_splitter.split_documents(docs_list)
+            # print('chunked_documents',chunked_documents)
 
 
-# Embedding arguments
-model_name = "all-MiniLM-L6-v2.gguf2.f16.gguf"
-gpt4all_kwargs = {'allow_download': 'True'}
+            # Embedding arguments
+            model_name = "all-MiniLM-L6-v2.gguf2.f16.gguf"
+            gpt4all_kwargs = {'allow_download': 'True'}
 
-# Add to vectorDB
-vectorstore = Chroma.from_documents(
-    documents=doc_splits,
-    collection_name="rag-chroma",
-    embedding = GPT4AllEmbeddings(
-                            model_name=model_name,
-                            gpt4all_kwargs=gpt4all_kwargs
-                                                        ),
-)
-retriever = vectorstore.as_retriever()
+            # Add to vectorDB
+            vectorstore = Chroma.from_documents(
+                documents=doc_splits,
+                collection_name="rag-chroma",
+                embedding = GPT4AllEmbeddings(
+                                        model_name=model_name,
+                                        gpt4all_kwargs=gpt4all_kwargs
+                                                                    ),
+            )
+            retriever = vectorstore.as_retriever(search_kwargs={"k": k})
+
+
+
+
+# urls = [
+#     "https://lilianweng.github.io/posts/2023-06-23-agent/",
+#     "https://lilianweng.github.io/posts/2023-03-15-prompt-engineering/",
+#     "https://lilianweng.github.io/posts/2023-10-25-adv-attack-llm/",
+# ]
+
+# docs = [WebBaseLoader(url).load() for url in urls]
+# docs_list = [item for sublist in docs for item in sublist]
+
+# text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+#     chunk_size=chunk_size, chunk_overlap=0
+# )
+# doc_splits = text_splitter.split_documents(docs_list)
+
+
+# # Embedding arguments
+# model_name = "all-MiniLM-L6-v2.gguf2.f16.gguf"
+# gpt4all_kwargs = {'allow_download': 'True'}
+
+# # Add to vectorDB
+# vectorstore = Chroma.from_documents(
+#     documents=doc_splits,
+#     collection_name="rag-chroma",
+#     embedding = GPT4AllEmbeddings(
+#                             model_name=model_name,
+#                             gpt4all_kwargs=gpt4all_kwargs
+#                                                         ),
+# )
+# retriever = vectorstore.as_retriever(search_kwargs={"k": k})
 
 llm = ChatGroq(temperature=0, model_name="llama3-70b-8192")
 
