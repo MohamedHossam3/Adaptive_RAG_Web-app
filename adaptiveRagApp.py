@@ -3,9 +3,9 @@ import streamlit as st
 from langchain_groq import ChatGroq
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_community.document_loaders import PyPDFLoader
-# from pypdf import PdfReader
+from pypdf import PdfReader
 import pypdf
-from PyPDF2 import PdfReader
+# from PyPDF2 import PdfReader
 from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -23,6 +23,9 @@ from langgraph.graph import END, StateGraph
 os.environ["TAVILY_API_KEY"] = "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"
 os.environ["GROQ_API_KEY"] = "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"
 
+curr_state = []
+urls = []
+docs_list = []
 
 def uploaded_data(uploaded_file, title=None):
     if uploaded_file is not None:
@@ -57,19 +60,12 @@ def load_web_page(urls):
     else: 
         return None
 
-st.set_page_config(page_title="Adaptive RAG ChatBot", page_icon=":robot:", layout="wide")
-
-curr_state = []
-urls = []
-docs_list = []
-################################FRONT-END####################################
-
 st.title("Adaptive RAG ChatBot")
 
 st.subheader("Ask questions about your documents and get answers from the RAG model.")
 
 #subheader
-# st.subheader('LLM Question-Answering Application')
+st.subheader('LLM Question-Answering Application')
 
 #sidebar creator
 with st.sidebar:
@@ -101,90 +97,162 @@ with st.sidebar:
     st.write('Made with ❤️ by Mohamed Farrag')
 
 
-    if add_data: # if the user browsed a file 
+if add_data: # if the user browsed a file 
 
-        with st.spinner ('Reading, chunking and embedding ...'):
+    # with st.spinner ('Reading, chunking and embedding ...'):
+        
+
+        # if len(urls) > 0:
+        #     url_docs_list = load_web_page(urls)
             
+        # if uploaded_file is not None:
+        #     docs = uploaded_data(uploaded_file)
+    print("urls2",urls)
+    url_docs_list = load_web_page(urls)
+    docs = uploaded_data(uploaded_file)
 
-            # if len(urls) > 0:
-            #     url_docs_list = load_web_page(urls)
-                
-            # if uploaded_file is not None:
-            #     docs = uploaded_data(uploaded_file)
-            print("urls2",urls)
-            url_docs_list = load_web_page(urls)
-            docs = uploaded_data(uploaded_file)
+    
+    if url_docs_list is not None and docs is not None:
+        docs_list = docs + url_docs_list
+    elif url_docs_list is not None and docs is None:
+        docs_list = url_docs_list
+    elif url_docs_list is None and docs is not None:
+        docs_list = docs
+    else:
+        docs_list = []
 
+    # print('docs_list',docs_list)
+    # text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+    #     chunk_size=chunk_size, chunk_overlap=0
+    # )
+    # doc_splits = text_splitter.split_documents(docs_list)
+    # print('doc_splits',doc_splits)
+
+    # text_splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
+    # chunked_documents = text_splitter.split_documents(docs_list)
+    # print('chunked_documents',chunked_documents)
+
+
+    # Embedding arguments
+    model_name = "all-MiniLM-L6-v2.gguf2.f16.gguf"
+    gpt4all_kwargs = {'allow_download': 'True'}
+
+    # Add to vectorDB
+    if "vs" not in st.session_state:
+
+        st.session_state.embeddings = GPT4AllEmbeddings(
+                                model_name=model_name,
+                                gpt4all_kwargs=gpt4all_kwargs
+                                                            )
+        st.session_state.docs = docs_list
+        st.session_state.text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+        chunk_size=chunk_size, chunk_overlap=0)
+        st.session_state.doc_splits = st.session_state.text_splitter.split_documents( st.session_state.docs)
+        st.session_state.vs = Chroma.from_documents(st.session_state.doc_splits, st.session_state.embeddings, collection_name="rag-chroma")
+        
+        # documents=doc_splits,
+        # collection_name="rag-chroma",
+        # embedding = GPT4AllEmbeddings(
+        #                         model_name=model_name,
+        #                         gpt4all_kwargs=gpt4all_kwargs
+        #                                                     ),
+        # )
+
+# if "vectorstore" not in st.session_state:
+#         st.session_state['vectorstore'] = None
+
+################################FRONT-END####################################
+
+# st.title("Adaptive RAG ChatBot")
+
+# st.subheader("Ask questions about your documents and get answers from the RAG model.")
+
+# #subheader
+# st.subheader('LLM Question-Answering Application')
+
+# #sidebar creator
+# with st.sidebar:
+
+#     #uploads file
+#     uploaded_file = st.file_uploader('Upload a file:', type=['pdf', 'docx', 'txt'])
+
+#     #Add URL
+#     url_input = st.text_input("Add a URL")
+#     if len(url_input)>0:
+#         urls.append(url_input)
+#     #add URL button
+#     if st.button("Add URL"):
+
+#         # urls.append(url_input)
+#         # print('urls',urls)
+#         st.write(f"Added URL: {url_input}")
+
+#     #number input widget
+#     chunk_size = st.number_input('Chunk size:', min_value=100, max_value=2048, value=512) #, on_change=clear_history
+
+#     #variable k input
+#     k = st.number_input('k', min_value=1, max_value=20, value=5) #, on_change=clear_history
+
+#     #add file button
+#     add_data = st.button('Add Data')
+
+#     add_vertical_space(5)
+#     st.write('Made with ❤️ by Mohamed Farrag')
+
+
+# if add_data: # if the user browsed a file 
+
+#     # with st.spinner ('Reading, chunking and embedding ...'):
+        
+
+#         # if len(urls) > 0:
+#         #     url_docs_list = load_web_page(urls)
             
-            if url_docs_list is not None and docs is not None:
-                docs_list = docs + url_docs_list
-            elif url_docs_list is not None and docs is None:
-                docs_list = url_docs_list
-            elif url_docs_list is None and docs is not None:
-                docs_list = docs
-            else:
-                docs_list = []
+#         # if uploaded_file is not None:
+#         #     docs = uploaded_data(uploaded_file)
+#     print("urls2",urls)
+#     url_docs_list = load_web_page(urls)
+#     docs = uploaded_data(uploaded_file)
 
-            print('docs_list',docs_list)
-            text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-                chunk_size=chunk_size, chunk_overlap=0
-            )
-            doc_splits = text_splitter.split_documents(docs_list)
-            print('doc_splits',doc_splits)
+    
+#     if url_docs_list is not None and docs is not None:
+#         docs_list = docs + url_docs_list
+#     elif url_docs_list is not None and docs is None:
+#         docs_list = url_docs_list
+#     elif url_docs_list is None and docs is not None:
+#         docs_list = docs
+#     else:
+#         docs_list = []
 
-            # text_splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
-            # chunked_documents = text_splitter.split_documents(docs_list)
-            # print('chunked_documents',chunked_documents)
+#     print('docs_list',docs_list)
+#     text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+#         chunk_size=chunk_size, chunk_overlap=0
+#     )
+#     doc_splits = text_splitter.split_documents(docs_list)
+#     print('doc_splits',doc_splits)
 
-
-            # Embedding arguments
-            model_name = "all-MiniLM-L6-v2.gguf2.f16.gguf"
-            gpt4all_kwargs = {'allow_download': 'True'}
-
-            # Add to vectorDB
-            vectorstore = Chroma.from_documents(
-                documents=doc_splits,
-                collection_name="rag-chroma",
-                embedding = GPT4AllEmbeddings(
-                                        model_name=model_name,
-                                        gpt4all_kwargs=gpt4all_kwargs
-                                                                    ),
-            )
-            retriever = vectorstore.as_retriever(search_kwargs={"k": k})
+#     # text_splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
+#     # chunked_documents = text_splitter.split_documents(docs_list)
+#     # print('chunked_documents',chunked_documents)
 
 
+#     # Embedding arguments
+#     model_name = "all-MiniLM-L6-v2.gguf2.f16.gguf"
+#     gpt4all_kwargs = {'allow_download': 'True'}
 
-
-# urls = [
-#     "https://lilianweng.github.io/posts/2023-06-23-agent/",
-#     "https://lilianweng.github.io/posts/2023-03-15-prompt-engineering/",
-#     "https://lilianweng.github.io/posts/2023-10-25-adv-attack-llm/",
-# ]
-
-# docs = [WebBaseLoader(url).load() for url in urls]
-# docs_list = [item for sublist in docs for item in sublist]
-
-# text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-#     chunk_size=chunk_size, chunk_overlap=0
-# )
-# doc_splits = text_splitter.split_documents(docs_list)
-
-
-# # Embedding arguments
-# model_name = "all-MiniLM-L6-v2.gguf2.f16.gguf"
-# gpt4all_kwargs = {'allow_download': 'True'}
-
-# # Add to vectorDB
-# vectorstore = Chroma.from_documents(
-#     documents=doc_splits,
-#     collection_name="rag-chroma",
-#     embedding = GPT4AllEmbeddings(
-#                             model_name=model_name,
-#                             gpt4all_kwargs=gpt4all_kwargs
-#                                                         ),
-# )
-# retriever = vectorstore.as_retriever(search_kwargs={"k": k})
-
+#     # Add to vectorDB
+#     vectorstore = Chroma.from_documents(
+#         documents=doc_splits,
+#         collection_name="rag-chroma",
+#         embedding = GPT4AllEmbeddings(
+#                                 model_name=model_name,
+#                                 gpt4all_kwargs=gpt4all_kwargs
+#                                                             ),
+#     )
+    
+#     retriever = vectorstore.as_retriever(search_kwargs={"k": k})
+            
+        
 llm = ChatGroq(temperature=0, model_name="llama3-70b-8192")
 
 prompt_retrieval_grader = PromptTemplate(
@@ -247,6 +315,24 @@ prompt_answer_grader = PromptTemplate(
 
 answer_grader = prompt_answer_grader | llm | JsonOutputParser()
 
+# prompt_question_router = PromptTemplate(
+#     template="""<|begin_of_text|><|start_header_id|>system<|end_header_id|> You are an expert at routing a 
+#     user question to a vectorstore or web search. Use the vectorstore for questions on LLM  agents, 
+#     prompt engineering, and adversarial attacks. You do not need to be stringent with the keywords 
+#     in the question related to these topics. Otherwise, use web-search. Give a binary choice 'web_search' 
+#     or 'vectorstore' based on the question. Return the a JSON with a single key 'datasource' and 
+#     no premable or explanation. Question to route: {question} <|eot_id|><|start_header_id|>assistant<|end_header_id|>""",
+#     input_variables=["question"],
+# )
+
+# prompt_question_router = PromptTemplate(
+#     template="""<|begin_of_text|><|start_header_id|>system<|end_header_id|> You are an expert at
+#     routing a user question to a vectorstore. Use the vectorstore for any questions.
+#     Give a single choice 'vectorstore'. Return the a JSON with a single key 'datasource' and 
+#     no premable or explanation. Question to route: {question} <|eot_id|><|start_header_id|>assistant<|end_header_id|>""",
+#     input_variables=["question"],
+# )
+
 prompt_question_router = PromptTemplate(
     template="""<|begin_of_text|><|start_header_id|>system<|end_header_id|> You are an expert at routing a 
     user question to a vectorstore or web search. Use the vectorstore for questions on LLM  agents, 
@@ -298,6 +384,7 @@ def retrieve(state):
     question = state["question"]
 
     # Retrieval
+    # retriever = st.session_state.vs.as_retriever(search_kwargs={"k": k})
     documents = retriever.invoke(question)
     return {"documents": documents, "question": question}
 
@@ -415,10 +502,18 @@ def route_question(state):
     # st.write(source["datasource"])
     datasource = source["datasource"]
     curr_state.append(f"The data source is the {datasource}")
+    # if source["datasource"] == "web_search":
+    #     # st.write("---ROUTE QUESTION TO WEB SEARCH---")
+    #     curr_state.append("---ROUTE QUESTION TO WEB SEARCH---")
+    #     return "websearch"
+    # elif source["datasource"] == "vectorstore":
+    #     # st.write("---ROUTE QUESTION TO RAG---")
+    #     curr_state.append("---ROUTE QUESTION TO RAG---")
+    #     return "vectorstore"
     if source["datasource"] == "web_search":
-        # st.write("---ROUTE QUESTION TO WEB SEARCH---")
-        curr_state.append("---ROUTE QUESTION TO WEB SEARCH---")
-        return "websearch"
+        # st.write("---ROUTE QUESTION TO RAG---")
+        curr_state.append("---ROUTE QUESTION TO RAG---")
+        return "vectorstore"
     elif source["datasource"] == "vectorstore":
         # st.write("---ROUTE QUESTION TO RAG---")
         curr_state.append("---ROUTE QUESTION TO RAG---")
@@ -505,6 +600,10 @@ def grade_generation_v_documents_and_question(state):
         # st.write("---DECISION: GENERATION IS NOT GROUNDED IN DOCUMENTS, RE-TRY---")
         curr_state.append("---DECISION: GENERATION IS NOT GROUNDED IN DOCUMENTS, RE-TRY---")
         return "not supported"
+    
+
+
+
 
 
 workflow = StateGraph(GraphState)
@@ -515,6 +614,7 @@ workflow.add_node("retrieve", retrieve)  # retrieve
 workflow.add_node("grade_documents", grade_documents)  # grade documents
 workflow.add_node("generate", generate)  # generatae
 
+# Build graph
 workflow.set_conditional_entry_point(
     route_question,
     {
@@ -544,12 +644,16 @@ workflow.add_conditional_edges(
 )
 
 # Compile
+# retriever = st.session_state.vs.as_retriever(search_kwargs={"k": k})
 app = workflow.compile()
 
 q = st.chat_input("Say something")
 inputs = {"question": q}
 
 if q:
+    retriever = st.session_state.vs.as_retriever(search_kwargs={"k": k})
+    app = workflow.compile()
+    # retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": k})
     for output in app.stream(inputs):
         for key, value in output.items():
             for i in range(len(curr_state)):
